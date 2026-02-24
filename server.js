@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
-import { createClient } from '@supabase/supabase-js'; // IMPORTANTE: Nueva librería
+import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -14,8 +14,7 @@ const client = new MercadoPagoConfig({
     accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN 
 });
 
-// 2. Configuración de Supabase (Para guardar la suscripción)
-// Asegúrate de que estas variables estén en Railway
+// 2. Configuración de Supabase
 const supabase = createClient(
     process.env.SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -66,7 +65,7 @@ app.post('/create_preference', async (req, res) => {
     }
 });
 
-// B. Verificar Pago (ACTUALIZADO)
+// B. Verificar Pago
 app.post('/verify-payment', async (req, res) => {
     try {
         const { payment_id } = req.body;
@@ -78,11 +77,10 @@ app.post('/verify-payment', async (req, res) => {
         const payment = new Payment(client);
         const paymentData = await payment.get({ id: payment_id });
 
-        // Verificamos si está aprobado
         const isApproved = paymentData.status === 'approved';
 
         res.json({ 
-            verified: isApproved, // ¡Esto es lo que esperaba el Frontend!
+            verified: isApproved,
             status: paymentData.status, 
             status_detail: paymentData.status_detail,
             transactionId: paymentData.id
@@ -94,7 +92,7 @@ app.post('/verify-payment', async (req, res) => {
     }
 });
 
-// C. GUARDAR SUSCRIPCIÓN (¡ESTA ES LA RUTA QUE FALTABA!)
+// C. GUARDAR SUSCRIPCIÓN (CORREGIDO con UPSERT)
 app.post('/save-subscription', async (req, res) => {
     const { userId, planId, payment_id } = req.body;
 
@@ -103,26 +101,33 @@ app.post('/save-subscription', async (req, res) => {
         const endDate = new Date();
         endDate.setDate(endDate.getDate() + 30); 
 
-        // 2. Actualizar el perfil del usuario en Supabase 'profiles'
+        // 2. Actualizar O CREAR el perfil del usuario en Supabase
+        // Usamos .upsert() en lugar de .update() para crear la fila si no existe
         const { data, error } = await supabase
             .from('profiles') 
-            .update({ 
+            .upsert({ 
+                id: userId, // Obligatorio para crear la fila si no existe
                 subscription_status: 'active',
-                plan_id: planId || 'vip_monthly', // Ajusta según tus IDs de planes
+                plan_id: planId || 'vip_monthly',
                 subscription_end_date: endDate.toISOString(),
                 updated_at: new Date().toISOString()
             })
-            .eq('id', userId);
+            .select(); // Importante para devolver el dato guardado y confirmar éxito
 
         if (error) throw error;
 
         // 3. (Opcional) Guardar log en 'payment_logs'
-        await supabase.from('payment_logs').insert({
-            user_id: userId,
-            payment_id: payment_id,
-            status: 'completed',
-            provider: 'mercadopago'
-        });
+        // Si esta tabla no existe o da error, no detiene el flujo principal gracias al try/catch global
+        try {
+            await supabase.from('payment_logs').insert({
+                user_id: userId,
+                payment_id: payment_id,
+                status: 'completed',
+                provider: 'mercadopago'
+            });
+        } catch (logError) {
+            console.error("Error guardando log (no crítico):", logError);
+        }
 
         res.json({ success: true, message: "Suscripción activada correctamente" });
 
@@ -141,7 +146,7 @@ app.post('/webhook', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.send('Servidor GemidosVIP v2.5 - Con Base de Datos');
+    res.send('Servidor GemidosVIP v3.0 - Upsert Fix');
 });
 
 app.listen(port, () => {
