@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
-import { createClient } from '@supabase/supabase-js'; // IMPORTANTE
+import { createClient } from '@supabase/supabase-js'; // IMPORTANTE: Nueva librería
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -15,6 +15,7 @@ const client = new MercadoPagoConfig({
 });
 
 // 2. Configuración de Supabase (Para guardar la suscripción)
+// Asegúrate de que estas variables estén en Railway
 const supabase = createClient(
     process.env.SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -43,7 +44,6 @@ app.post('/create_preference', async (req, res) => {
                     currency_id: 'ARS',
                 },
             ],
-            // Información del pagador para rastreo
             metadata: {
                 user_id: req.body.userId 
             },
@@ -66,7 +66,7 @@ app.post('/create_preference', async (req, res) => {
     }
 });
 
-// B. Verificar Pago
+// B. Verificar Pago (ACTUALIZADO)
 app.post('/verify-payment', async (req, res) => {
     try {
         const { payment_id } = req.body;
@@ -82,7 +82,7 @@ app.post('/verify-payment', async (req, res) => {
         const isApproved = paymentData.status === 'approved';
 
         res.json({ 
-            verified: isApproved,
+            verified: isApproved, // ¡Esto es lo que esperaba el Frontend!
             status: paymentData.status, 
             status_detail: paymentData.status_detail,
             transactionId: paymentData.id
@@ -103,13 +103,12 @@ app.post('/save-subscription', async (req, res) => {
         const endDate = new Date();
         endDate.setDate(endDate.getDate() + 30); 
 
-        // 2. Actualizar el perfil del usuario en Supabase
-        // Asumo que tu tabla se llama 'profiles'. Si se llama 'users', cámbialo aquí.
+        // 2. Actualizar el perfil del usuario en Supabase 'profiles'
         const { data, error } = await supabase
-            .from('profiles')
+            .from('profiles') 
             .update({ 
                 subscription_status: 'active',
-                plan_id: planId || 'vip_monthly',
+                plan_id: planId || 'vip_monthly', // Ajusta según tus IDs de planes
                 subscription_end_date: endDate.toISOString(),
                 updated_at: new Date().toISOString()
             })
@@ -117,7 +116,7 @@ app.post('/save-subscription', async (req, res) => {
 
         if (error) throw error;
 
-        // Opcional: Guardar registro en payment_logs
+        // 3. (Opcional) Guardar log en 'payment_logs'
         await supabase.from('payment_logs').insert({
             user_id: userId,
             payment_id: payment_id,
@@ -142,7 +141,7 @@ app.post('/webhook', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.send('Servidor GemidosVIP v2.0 - Activo');
+    res.send('Servidor GemidosVIP v2.5 - Con Base de Datos');
 });
 
 app.listen(port, () => {
