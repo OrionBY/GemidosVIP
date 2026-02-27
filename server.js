@@ -21,9 +21,12 @@ const supabase = createClient(
 );
 
 // 3. Middlewares
+// --- CORRECCIÓN 1: CORS PERMISIVO ---
+// Esto permite que 'lacasitademiabuela.org' se conecte sin errores de bloqueo.
 app.use(cors({
-    origin: process.env.FRONTEND_URL || '*',
-    methods: ["POST", "GET"],
+    origin: '*', 
+    methods: ["POST", "GET", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true
 }));
 app.use(express.json());
@@ -33,6 +36,10 @@ app.use(express.json());
 // A. Crear Preferencia de Pago
 app.post('/create_preference', async (req, res) => {
     try {
+        // --- CORRECCIÓN 2: LIMPIEZA DE URL ---
+        // Esto evita que si pones una barra al final en Railway, la URL se rompa (ej: .org//dashboard)
+        const frontendUrl = process.env.FRONTEND_URL?.replace(/\/$/, '') || 'https://lacasitademiabuela.org';
+
         const body = {
             items: [
                 {
@@ -47,9 +54,9 @@ app.post('/create_preference', async (req, res) => {
                 user_id: req.body.userId 
             },
             back_urls: {
-                success: `${process.env.FRONTEND_URL}/dashboard?tab=suscripcion`,
-                failure: `${process.env.FRONTEND_URL}/dashboard?tab=suscripcion`,
-                pending: `${process.env.FRONTEND_URL}/dashboard?tab=suscripcion`
+                success: `${frontendUrl}/dashboard?tab=suscripcion`,
+                failure: `${frontendUrl}/dashboard?tab=suscripcion`,
+                pending: `${frontendUrl}/dashboard?tab=suscripcion`
             },
             auto_return: "approved",
             notification_url: "https://gemidosvip-production.up.railway.app/webhook" 
@@ -65,7 +72,7 @@ app.post('/create_preference', async (req, res) => {
     }
 });
 
-// B. Verificar Pago
+// B. Verificar Pago (TU CÓDIGO ORIGINAL CONSERVADO)
 app.post('/verify-payment', async (req, res) => {
     try {
         const { payment_id } = req.body;
@@ -92,7 +99,8 @@ app.post('/verify-payment', async (req, res) => {
     }
 });
 
-// C. GUARDAR SUSCRIPCIÓN (CORREGIDO con UPSERT)
+// C. GUARDAR SUSCRIPCIÓN (TU CÓDIGO ORIGINAL CONSERVADO)
+// Aunque ahora el frontend hace esto, dejamos esta ruta viva por seguridad o uso futuro.
 app.post('/save-subscription', async (req, res) => {
     const { userId, planId, payment_id } = req.body;
 
@@ -102,22 +110,20 @@ app.post('/save-subscription', async (req, res) => {
         endDate.setDate(endDate.getDate() + 30); 
 
         // 2. Actualizar O CREAR el perfil del usuario en Supabase
-        // Usamos .upsert() en lugar de .update() para crear la fila si no existe
         const { data, error } = await supabase
             .from('profiles') 
             .upsert({ 
-                id: userId, // Obligatorio para crear la fila si no existe
+                id: userId, 
                 subscription_status: 'active',
                 plan_id: planId || 'vip_monthly',
                 subscription_end_date: endDate.toISOString(),
                 updated_at: new Date().toISOString()
             })
-            .select(); // Importante para devolver el dato guardado y confirmar éxito
+            .select(); 
 
         if (error) throw error;
 
-        // 3. (Opcional) Guardar log en 'payment_logs'
-        // Si esta tabla no existe o da error, no detiene el flujo principal gracias al try/catch global
+        // 3. Guardar log en 'payment_logs'
         try {
             await supabase.from('payment_logs').insert({
                 user_id: userId,
@@ -146,7 +152,7 @@ app.post('/webhook', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.send('Servidor GemidosVIP v3.0 - Upsert Fix');
+    res.send('Servidor GemidosVIP v3.0 - Upsert Fix + CORS Fix');
 });
 
 app.listen(port, () => {
