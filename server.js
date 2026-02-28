@@ -21,8 +21,7 @@ const supabase = createClient(
 );
 
 // 3. Middlewares
-// --- CORRECCIÓN 1: CORS PERMISIVO ---
-// Esto permite que 'lacasitademiabuela.org' se conecte sin errores de bloqueo.
+// CORS PERMISIVO
 app.use(cors({
     origin: '*', 
     methods: ["POST", "GET", "OPTIONS"],
@@ -33,11 +32,48 @@ app.use(express.json());
 
 // --- RUTAS ---
 
-// A. Crear Preferencia de Pago
+// =================================================================
+// A. NUEVA RUTA UNIVERSAL (Para la Billetera de Clientes)
+// Usamos guion medio (-) y aceptamos back_urls dinámicos
+// =================================================================
+app.post('/create-preference', async (req, res) => {
+    try {
+      const { title, price, quantity, external_reference, back_urls } = req.body;
+  
+      const body = {
+        items: [
+          {
+            title: title,
+            unit_price: Number(price),
+            quantity: Number(quantity),
+            currency_id: "ARS",
+          }
+        ],
+        external_reference: external_reference, 
+        back_urls: back_urls,
+        auto_return: "approved",
+      };
+  
+      const preference = new Preference(client);
+      const result = await preference.create({ body });
+  
+      // La billetera necesita el init_point para redirigir
+      res.json({
+        id: result.id,
+        init_point: result.init_point 
+      });
+  
+    } catch (error) {
+      console.error("Error al crear preferencia universal:", error);
+      res.status(500).json({ error: "No se pudo crear el link de pago" });
+    }
+});
+
+// =================================================================
+// B. RUTA ORIGINAL DE ESCORTS (Conservada para no romper nada)
+// =================================================================
 app.post('/create_preference', async (req, res) => {
     try {
-        // --- CORRECCIÓN 2: LIMPIEZA DE URL ---
-        // Esto evita que si pones una barra al final en Railway, la URL se rompa (ej: .org//dashboard)
         const frontendUrl = process.env.FRONTEND_URL?.replace(/\/$/, '') || 'https://lacasitademiabuela.org';
 
         const body = {
@@ -67,12 +103,14 @@ app.post('/create_preference', async (req, res) => {
 
         res.json({ id: result.id });
     } catch (error) {
-        console.error("Error al crear preferencia:", error);
+        console.error("Error al crear preferencia escort:", error);
         res.status(500).json({ error: "Error al crear la preferencia de pago" });
     }
 });
 
-// B. Verificar Pago (TU CÓDIGO ORIGINAL CONSERVADO)
+// =================================================================
+// C. VERIFICAR PAGO (Original)
+// =================================================================
 app.post('/verify-payment', async (req, res) => {
     try {
         const { payment_id } = req.body;
@@ -99,17 +137,16 @@ app.post('/verify-payment', async (req, res) => {
     }
 });
 
-// C. GUARDAR SUSCRIPCIÓN (TU CÓDIGO ORIGINAL CONSERVADO)
-// Aunque ahora el frontend hace esto, dejamos esta ruta viva por seguridad o uso futuro.
+// =================================================================
+// D. GUARDAR SUSCRIPCIÓN (Original)
+// =================================================================
 app.post('/save-subscription', async (req, res) => {
     const { userId, planId, payment_id } = req.body;
 
     try {
-        // 1. Calcular fecha de vencimiento (30 días por defecto)
         const endDate = new Date();
         endDate.setDate(endDate.getDate() + 30); 
 
-        // 2. Actualizar O CREAR el perfil del usuario en Supabase
         const { data, error } = await supabase
             .from('profiles') 
             .upsert({ 
@@ -123,7 +160,6 @@ app.post('/save-subscription', async (req, res) => {
 
         if (error) throw error;
 
-        // 3. Guardar log en 'payment_logs'
         try {
             await supabase.from('payment_logs').insert({
                 user_id: userId,
@@ -152,7 +188,7 @@ app.post('/webhook', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.send('Servidor GemidosVIP v3.0 - Upsert Fix + CORS Fix');
+    res.send('Servidor GemidosVIP v4.0 - Billetera y Escorts 🚀');
 });
 
 app.listen(port, () => {
