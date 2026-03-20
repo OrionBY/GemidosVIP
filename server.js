@@ -116,7 +116,7 @@ app.post('/create_preference', async (req, res) => {
                 pending: `${frontendUrl}/dashboard?tab=suscripcion&status=pending`
             },
             auto_return: "approved",
-            notification_url: "https://gemidos-vip-backend-production.up.railway.app/webhook" 
+            notification_url: "https://api.gemidosvip.com/webhook" 
         };
 
         const preference = new Preference(client);
